@@ -123,21 +123,30 @@ class MainActivity : FlutterActivity() {
             if ((state and Reader.CARD_PRESENT) == 0) {
                 return "❌ Carte non insérée"
             }
-        } catch (e: Exception) {
-            return "❌ Erreur état lecteur: ${e.message}"
-        }
 
-        val command = byteArrayOf(
-            0xFF.toByte(),
-            0xCA.toByte(),
-            0x00.toByte(),
-            0x00.toByte(),
-            0x00.toByte()
-        )
+            val atr = try {
+                reader.power(0, Reader.CARD_WARM_RESET)
+            } catch (_: Exception) {
+                reader.power(0, Reader.CARD_COLD_RESET)
+            }
 
-        val response = ByteArray(256)
+            val atrHex = atr.joinToString(" ") { byte -> "%02X".format(byte) }
 
-        try {
+            try {
+                reader.setProtocol(0, Reader.PROTOCOL_T0 or Reader.PROTOCOL_T1)
+            } catch (_: Exception) {
+                // Certains lecteurs/cartes gèrent déjà le protocole automatiquement.
+            }
+
+            val command = byteArrayOf(
+                0xFF.toByte(),
+                0xCA.toByte(),
+                0x00.toByte(),
+                0x00.toByte(),
+                0x00.toByte()
+            )
+
+            val response = ByteArray(256)
             val responseLength = reader.transmit(
                 0,
                 command,
@@ -147,16 +156,26 @@ class MainActivity : FlutterActivity() {
             )
 
             if (responseLength <= 0) {
-                return "❌ Aucune réponse de la carte"
+                return "❌ Carte détectée mais aucune réponse APDU (ATR: $atrHex)"
             }
 
-            val hexResponse = response
-                .copyOfRange(0, responseLength)
-                .joinToString(" ") { byte -> "%02X".format(byte) }
+            val apdu = response.copyOfRange(0, responseLength)
+            val apduHex = apdu.joinToString(" ") { byte -> "%02X".format(byte) }
 
-            return "✅ Réponse APDU : $hexResponse"
+            if (responseLength >= 2) {
+                val sw1 = apdu[responseLength - 2].toInt() and 0xFF
+                val sw2 = apdu[responseLength - 1].toInt() and 0xFF
+                if (sw1 == 0x90 && sw2 == 0x00 && responseLength > 2) {
+                    val uid = apdu.copyOfRange(0, responseLength - 2)
+                        .joinToString(" ") { byte -> "%02X".format(byte) }
+                    return "✅ Carte lue\nATR: $atrHex\nUID: $uid"
+                }
+                return "⚠️ Carte détectée\nATR: $atrHex\nRéponse APDU: $apduHex\nStatut: %02X %02X".format(sw1, sw2)
+            }
+
+            return "⚠️ Carte détectée\nATR: $atrHex\nRéponse APDU: $apduHex"
         } catch (e: Exception) {
-            return "❌ Erreur transmission: ${e.message}"
+            return "❌ Erreur lecture: ${e.message}"
         } finally {
             try {
                 reader.close()
