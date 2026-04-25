@@ -71,40 +71,60 @@ class _CarteScreenState extends State<CarteScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.green[100],
-      body: Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ElevatedButton(
-              onPressed: readCard,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.green[800],
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 40,
-                  vertical: 15,
+      body: SafeArea(
+        child: Center(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                ElevatedButton(
+                  onPressed: readCard,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.green[800],
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 40,
+                      vertical: 15,
+                    ),
+                  ),
+                  child: const Text("Lire la carte"),
                 ),
-              ),
-              child: const Text("Lire la carte"),
+                const SizedBox(height: 20),
+                Text(
+                  result,
+                  textAlign: TextAlign.center,
+                ),
+                if (imageMessage != null) ...[
+                  const SizedBox(height: 12),
+                  Text(
+                    imageMessage!,
+                    textAlign: TextAlign.center,
+                  ),
+                ],
+                if (imageBytes != null || imagePath != null) ...[
+                  const SizedBox(height: 20),
+                  ConstrainedBox(
+                    constraints: const BoxConstraints(maxHeight: 320),
+                    child: imageBytes != null
+                        ? Image.memory(
+                            imageBytes!,
+                            fit: BoxFit.contain,
+                          )
+                        : Image.file(
+                            File(imagePath!),
+                            fit: BoxFit.contain,
+                            errorBuilder: (context, error, stackTrace) {
+                              return Text(
+                                'Erreur chargement image: $error',
+                                textAlign: TextAlign.center,
+                              );
+                            },
+                          ),
+                  ),
+                ],
+              ],
             ),
-            const SizedBox(height: 20),
-            Text(result),
-            if (imageMessage != null) ...[
-              const SizedBox(height: 12),
-              Text(imageMessage!),
-            ],
-            if (imageBytes != null) ...[
-              const SizedBox(height: 20),
-              Image.memory(imageBytes!),
-            ] else if (imagePath != null) ...[
-              const SizedBox(height: 20),
-              Image.file(
-                File(imagePath!),
-                errorBuilder: (context, error, stackTrace) {
-                  return Text('Erreur chargement image: $error');
-                },
-              ),
-            ],
-          ],
+          ),
         ),
       ),
     );
