@@ -1,5 +1,7 @@
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'dart:io';
 
 void main() {
   runApp(const MyApp());
@@ -28,16 +30,39 @@ class _CarteScreenState extends State<CarteScreen> {
   static const platform = MethodChannel('acr39_reader');
 
   String result = "Aucune carte";
+  String? imagePath;
+  Uint8List? imageBytes;
+  String? imageMessage;
 
   Future<void> readCard() async {
     try {
-      final String data = await platform.invokeMethod('readCard');
+      final dynamic response = await platform.invokeMethod('readCard');
       setState(() {
-        result = data;
+        imagePath = null;
+        imageBytes = null;
+        imageMessage = null;
+
+        if (response is Map) {
+          result = response['mrz'] as String? ?? 'Aucune carte';
+          imageBytes = response['pngData'] as Uint8List?;
+          imagePath = response['pngPath'] as String?;
+          imageMessage = response['message'] as String?;
+          final jp2Path = response['jp2Path'] as String?;
+          if (imageBytes == null && imagePath == null && jp2Path != null) {
+            imageMessage = 'JP2 sauvegardé : $jp2Path';
+          }
+        } else if (response is String) {
+          result = response;
+        } else {
+          result = 'Réponse inattendue du natif';
+        }
       });
     } catch (e) {
       setState(() {
         result = "Erreur: $e";
+        imagePath = null;
+        imageBytes = null;
+        imageMessage = null;
       });
     }
   }
@@ -63,6 +88,22 @@ class _CarteScreenState extends State<CarteScreen> {
             ),
             const SizedBox(height: 20),
             Text(result),
+            if (imageMessage != null) ...[
+              const SizedBox(height: 12),
+              Text(imageMessage!),
+            ],
+            if (imageBytes != null) ...[
+              const SizedBox(height: 20),
+              Image.memory(imageBytes!),
+            ] else if (imagePath != null) ...[
+              const SizedBox(height: 20),
+              Image.file(
+                File(imagePath!),
+                errorBuilder: (context, error, stackTrace) {
+                  return Text('Erreur chargement image: $error');
+                },
+              ),
+            ],
           ],
         ),
       ),
