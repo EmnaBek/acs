@@ -210,7 +210,7 @@ class MainActivity : FlutterActivity() {
                 }
                 "✅ Image décodée et renvoyée depuis le natif"
             } catch (e: Exception) {
-                "⚠️ Image JP2 sauvegardée (affichage non supporté) :\n${jp2File.absolutePath}"
+                "⚠️ Image JP2 sauvegardée (décodage échoué: ${e.message}) :\n${jp2File.absolutePath}"
             }
 
             return mapOf(
@@ -349,13 +349,23 @@ class MainActivity : FlutterActivity() {
     private fun extractJp2(dg2: ByteArray): ByteArray {
         val sig = hexToBytes("0000000C6A5020200D0A870A")
         val idx = indexOf(dg2, sig)
-        if (idx == -1) throw RuntimeException("JP2 image signature not found")
-        val candidate = dg2.copyOfRange(idx, dg2.size)
-        val length = jp2FileLength(candidate)
-        return if (length > 0 && length <= candidate.size) {
-            candidate.copyOfRange(0, length)
+        if (idx != -1) {
+            val candidate = dg2.copyOfRange(idx, dg2.size)
+            val length = jp2FileLength(candidate)
+            return if (length > 0 && length <= candidate.size) {
+                candidate.copyOfRange(0, length)
+            } else {
+                candidate
+            }
+        }
+
+        // Some documents store a raw J2K codestream (starts with FF4F) instead of a JP2 file.
+        val codestreamSig = hexToBytes("FF4FFF51")
+        val codestreamIdx = indexOf(dg2, codestreamSig)
+        if (codestreamIdx != -1) {
+            return dg2.copyOfRange(codestreamIdx, dg2.size)
         } else {
-            candidate
+            throw RuntimeException("JP2/J2K image signature not found in DG2")
         }
     }
 
@@ -392,6 +402,9 @@ class MainActivity : FlutterActivity() {
     }
 
     private fun decodeJp2ToBitmap(jp2: ByteArray, jp2File: java.io.File): android.graphics.Bitmap? {
+        // Dedicated JP2 decoder (OpenJPEG) via JP2ForAndroid.
+        decodeWithJp2Library(jp2)?.let { return it }
+
         // Try Android's built-in decoder first; some devices may support JP2.
         val bitmap = android.graphics.BitmapFactory.decodeByteArray(jp2, 0, jp2.size)
         if (bitmap != null) return bitmap
@@ -410,6 +423,26 @@ class MainActivity : FlutterActivity() {
         } catch (_: Exception) {
             null
         }
+    }
+
+    private fun decodeWithJp2Library(jp2: ByteArray): android.graphics.Bitmap? {
+        val classNames = listOf(
+            "com.gemalto.jp2.JP2Decoder",
+            "dev.keiji.jp2.JP2Decoder",
+        )
+        for (className in classNames) {
+            try {
+                val decoderClass = Class.forName(className)
+                val ctor = decoderClass.getConstructor(ByteArray::class.java)
+                val decoder = ctor.newInstance(jp2)
+                val decode = decoderClass.getMethod("decode")
+                val result = decode.invoke(decoder)
+                if (result is android.graphics.Bitmap) return result
+            } catch (_: Exception) {
+                // Try next available class name.
+            }
+        }
+        return null
     }
 
     private fun indexOf(data: ByteArray, pattern: ByteArray): Int {
