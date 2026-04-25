@@ -44,4 +44,5 @@ flutter {
 
 dependencies {
     implementation(files("libs/acssmc-1.1.8.aar"))
+    implementation("dev.keiji.jp2:jp2-android:1.0.5")
 }
